@@ -4,109 +4,69 @@ from book import (
     calculate_discounted_price,
     calculate_total_price,
     combine_prices,
+    books # Needed for setup/teardown if tests were modifying it, but generally good to have context.
 )
 
-# Tests for get_book_price function
-def test_get_book_price_valid_book():
-    """Test that get_book_price returns the correct price for an existing book."""
-    assert get_book_price("python_guide") == pytest.approx(25.99)
-    assert get_book_price("algorithms") == pytest.approx(45.00)
+# A common pattern for managing mutable global state in tests is to save and restore it,
+# or to use fixtures that provide a known state.
+# For this simple case, we'll assume `books` remains constant during test runs.
 
-def test_get_book_price_invalid_book():
-    """Test that get_book_price returns 0 for a non-existent book."""
+def test_get_book_price_existing_book():
+    """Test retrieving the price of an existing book."""
+    assert get_book_price("python_guide") == 25.99
+    assert get_book_price("data_science") == 32.50
+    assert get_book_price("algorithms") == 45.00
+
+def test_get_book_price_non_existing_book():
+    """Test retrieving the price of a non-existing book, expecting 0."""
     assert get_book_price("non_existent_book") == 0
-    assert get_book_price("unknown_title") == 0
+    assert get_book_price("unknown") == 0
 
-# Tests for calculate_discounted_price function
-def test_calculate_discounted_price_valid_book_and_discount():
-    """Test discounted price for an existing book with a valid discount percentage."""
-    # 25.99 * (1 - 10/100) = 25.99 * 0.9 = 23.391
-    assert calculate_discounted_price("python_guide", 10) == pytest.approx(23.391)
-    # 32.50 * (1 - 25/100) = 32.50 * 0.75 = 24.375
-    assert calculate_discounted_price("data_science", 25) == pytest.approx(24.375)
+@pytest.mark.parametrize("book_name, discount_percent, expected_price", [
+    ("python_guide", 10, 23.391),  # 25.99 * (1 - 0.1)
+    ("data_science", 25, 24.375),  # 32.50 * (1 - 0.25)
+    ("web_dev", 0, 28.75),        # No discount
+    ("algorithms", 100, 0),       # 100% discount
+    ("machine_learning", 50, 27.625), # 55.25 * (1 - 0.5)
+    ("python_guide", -10, 28.589), # Negative discount (price increase)
+])
+def test_calculate_discounted_price_valid_book(book_name, discount_percent, expected_price):
+    """Test calculating discounted price for existing books with various discounts."""
+    # Use pytest.approx for float comparisons
+    assert calculate_discounted_price(book_name, discount_percent) == pytest.approx(expected_price)
 
-def test_calculate_discounted_price_valid_book_zero_discount():
-    """Test discounted price with 0% discount, should be original price."""
-    assert calculate_discounted_price("web_dev", 0) == pytest.approx(28.75)
-
-def test_calculate_discounted_price_valid_book_full_discount():
-    """Test discounted price with 100% discount, should be 0."""
-    assert calculate_discounted_price("algorithms", 100) == pytest.approx(0.0)
-
-def test_calculate_discounted_price_invalid_book():
-    """Test discounted price for a non-existent book, should return 0."""
+def test_calculate_discounted_price_non_existing_book():
+    """Test calculating discounted price for a non-existing book, expecting 0."""
     assert calculate_discounted_price("non_existent_book", 10) == 0
-    assert calculate_discounted_price("unknown_title", 50) == 0
+    assert calculate_discounted_price("unknown_book", 50) == 0
 
-def test_calculate_discounted_price_valid_book_over_100_percent_discount():
-    """
-    Test discounted price with a discount greater than 100%.
-    Current implementation results in a negative price.
-    """
-    # 25.99 * (1 - 120/100) = 25.99 * (-0.2) = -5.198
-    assert calculate_discounted_price("python_guide", 120) == pytest.approx(-5.198)
+@pytest.mark.parametrize("book_list, expected_total", [
+    ([], 0),                                # Empty list
+    (["python_guide"], 25.99),              # Single existing book
+    (["python_guide", "data_science"], 25.99 + 32.50), # Multiple existing books
+    (["non_existent"], 0),                  # Single non-existing book
+    (["python_guide", "non_existent"], 25.99), # Mix of existing and non-existing
+    (["non_existent1", "non_existent2"], 0), # All non-existing
+    (["web_dev", "algorithms", "machine_learning"], 28.75 + 45.00 + 55.25), # More books
+])
+def test_calculate_total_price(book_list, expected_total):
+    """Test calculating total price for various lists of books."""
+    assert calculate_total_price(book_list) == pytest.approx(expected_total)
 
-def test_calculate_discounted_price_valid_book_negative_discount():
-    """
-    Test discounted price with a negative discount (i.e., a markup).
-    Current implementation increases the price.
-    """
-    # 25.99 * (1 - (-10)/100) = 25.99 * 1.1 = 28.589
-    assert calculate_discounted_price("python_guide", -10) == pytest.approx(28.589)
+@pytest.mark.parametrize("book1, book2, expected_combined_price", [
+    # Both books exist, 10% discount applies
+    ("python_guide", "data_science", (25.99 + 32.50) * 0.9),
+    ("web_dev", "algorithms", (28.75 + 45.00) * 0.9),
+    ("python_guide", "python_guide", (25.99 + 25.99) * 0.9), # Same book twice
 
-# Tests for calculate_total_price function
-def test_calculate_total_price_empty_list():
-    """Test total price for an empty list of books."""
-    assert calculate_total_price([]) == 0
+    # One book exists, one does not (no discount, sum of prices)
+    ("python_guide", "non_existent", 25.99 + 0),
+    ("non_existent", "data_science", 0 + 32.50),
 
-def test_calculate_total_price_single_valid_book():
-    """Test total price for a list containing a single valid book."""
-    assert calculate_total_price(["python_guide"]) == pytest.approx(25.99)
-
-def test_calculate_total_price_multiple_valid_books():
-    """Test total price for a list containing multiple valid books."""
-    # 25.99 + 32.50 = 58.49
-    assert calculate_total_price(["python_guide", "data_science"]) == pytest.approx(58.49)
-    # 25.99 + 32.50 + 28.75 = 87.24
-    assert calculate_total_price(["python_guide", "data_science", "web_dev"]) == pytest.approx(87.24)
-
-def test_calculate_total_price_single_invalid_book():
-    """Test total price for a list containing a single non-existent book."""
-    assert calculate_total_price(["non_existent_book"]) == 0
-
-def test_calculate_total_price_mixed_books():
-    """Test total price for a list containing both valid and invalid books."""
-    # 25.99 (python_guide) + 0 (non_existent_book) + 28.75 (web_dev) = 54.74
-    assert calculate_total_price(["python_guide", "non_existent_book", "web_dev"]) == pytest.approx(54.74)
-
-def test_calculate_total_price_duplicate_books():
-    """Test total price for a list containing duplicate books."""
-    # 25.99 + 25.99 = 51.98
-    assert calculate_total_price(["python_guide", "python_guide"]) == pytest.approx(51.98)
-
-# Tests for combine_prices function
-def test_combine_prices_two_valid_books():
-    """Test combined price for two valid books with the bundle discount."""
-    # (25.99 + 32.50) * 0.9 = 58.49 * 0.9 = 52.641
-    assert combine_prices("python_guide", "data_science") == pytest.approx(52.641)
-    # (28.75 + 45.00) * 0.9 = 73.75 * 0.9 = 66.375
-    assert combine_prices("web_dev", "algorithms") == pytest.approx(66.375)
-
-def test_combine_prices_first_book_invalid():
-    """Test combined price when the first book is invalid (no discount)."""
-    # 0 + 32.50 = 32.50 (no discount applied because one book is invalid)
-    assert combine_prices("non_existent_book", "data_science") == pytest.approx(32.50)
-
-def test_combine_prices_second_book_invalid():
-    """Test combined price when the second book is invalid (no discount)."""
-    # 25.99 + 0 = 25.99 (no discount applied because one book is invalid)
-    assert combine_prices("python_guide", "non_existent_book") == pytest.approx(25.99)
-
-def test_combine_prices_both_books_invalid():
-    """Test combined price when both books are invalid."""
-    assert combine_prices("non_existent_book1", "non_existent_book2") == 0
-
-def test_combine_prices_same_book():
-    """Test combined price when the same valid book is provided twice."""
-    # (25.99 + 25.99) * 0.9 = 51.98 * 0.9 = 46.782
-    assert combine_prices("python_guide", "python_guide") == pytest.approx(46.782)
+    # Neither book exists (sum of zeros)
+    ("non_existent1", "non_existent2", 0 + 0),
+    ("unknown1", "unknown2", 0),
+])
+def test_combine_prices(book1, book2, expected_combined_price):
+    """Test combining prices of two books with and without bundle discount."""
+    assert combine_prices(book1, book2) == pytest.approx(expected_combined_price)
